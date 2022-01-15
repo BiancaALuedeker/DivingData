@@ -1,0 +1,145 @@
+################################################################################
+## Bianca Luedeker
+## August 27, 2020
+## Final Analysis of the regional diving data.
+## This analysis is different than all others since I am using cleaned data 
+## (missing scores were calculated from previous and subsequent round totals
+## and footage was gathered from camera 2).  Additionally, hot deck imputation
+## was used on the small subset of missing scores.
+################################################################################
+
+#### Packages  #####
+library(tidyverse)
+library(hot.deck)
+
+
+#### Collaspe diving positions.  ####
+## Import cleaned data and check graphically if diving positions can be collasped.
+
+## For Mac
+divedata <- read.csv("/Volumes/SMU 2018/S2020IndependentStudy/Diving Project/Regional19/regresultsnomiss.csv", header = TRUE)
+
+## For PC
+divedata <- read.csv("F:/S2020IndependentStudy/Diving Project/Regional19/regresultsnomiss.csv", header = TRUE)
+View(divedata)
+
+boxplot(divedata$Avg.Score ~ divedata$Position)
+
+## Conduct ANOVA to see if means differ.
+position.aov <- aov(divedata$Avg.Score ~ divedata$Position)
+summary(position.aov)
+TukeyHSD(position.aov)
+
+## There is evidence that there should only be two position categories:
+## pike and other.
+
+#### Regression Analysis  ####
+
+## Import data set with NA's included and diving positions collapsed into 2 groups.
+
+##Mac
+
+dive.data <- read.csv("/Volumes/SMU 2018/S2020IndependentStudy/Diving Project/Regional19/dive.data.august.csv", header = TRUE)
+
+## PC
+dive.data <- read.csv("F:/S2020IndependentStudy/Diving Project/Regional19/dive.data.august.csv")
+View(dive.data)
+
+## Impute missing values using hot deck imputation through the package hot.deck.
+set.seed(1983)
+imputed.dive <- hot.deck(dive.data, m=1)
+imputed.dive.data <- imputed.dive$data[[1]]
+View(imputed.dive.data)
+
+## Conduct analysis on the imputed data set. 
+
+attach(imputed.dive.data)
+
+Model.one <- lm(Avg.Score ~ Gender + Second.Angle + Distance + Height + 
+                  Position + DD + First.Angle + as.factor(Round))
+summary(Model.one)
+
+Model.justvideo <- lm(Avg.Score ~ Gender + Second.Angle + Distance + Height + Gender*Height + First.Angle)
+summary(Model.justvideo)
+
+Model.two <- lm(Avg.Score ~ Gender + Second.Angle + Distance + Height + Position + DD)
+summary(Model.two)
+
+Model.three <- lm(Avg.Score ~ Gender + Second.Angle + Distance + Height + Position + DD + Gender*Height)
+summary(Model.three)
+
+predict(Model.three)
+detach(imputed.dive.data)
+####  Ranking on Measured Attributes ####
+
+##  For height the score assigned is the number of standard deviations a value falls
+## from the mean.  For distance, second angle, third angle, the score is 
+## 3 - sd.  The total of theses four scores is calculated and multiplied by DD
+## to get a round total.  These are summed to get a total.  Ranking is determined
+## for males and females.
+
+dive.data.tibble <- as_tibble(cbind(imputed.dive.data, reg.model = predict(Model.three)))
+View(dive.data.tibble)
+                              
+
+female.scores <- dive.data.tibble %>%
+  filter(Gender=="F") %>%
+  mutate(
+    angle.one.score = 3-(First.Angle - mean(First.Angle))/sd(First.Angle),
+    angle.two.score = 3 - (Second.Angle - mean(Second.Angle))/sd(Second.Angle),
+    height.score = (Height - mean(Height))/sd(Height),
+    distance.score = 3 - (Distance - mean(Distance))/sd(Distance),
+    total.score = (angle.one.score + angle.two.score +height.score +distance.score)*DD,
+    reg.total = reg.model*3*DD)
+
+View(female.scores)
+
+female.ranking <- female.scores %>% 
+  select(Diver, Round.Score, total.score, reg.total) %>%
+  group_by(Diver) %>%
+  summarize(
+    actual.meet.total = sum(Round.Score),
+    my.meet.total = sum(total.score),
+    reg.model.total = sum(reg.total)) %>%
+  arrange(desc(actual.meet.total)) %>%
+  mutate(
+    actual.ranks = rank(-actual.meet.total),
+    my.meet.ranks = rank(-my.meet.total),
+    reg.model.ranks = rank(-reg.model.total)
+  )
+  
+            
+View(female.ranking)
+wr
+
+male.scores <- dive.data.tibble %>%
+  filter(Gender=="M") %>%
+  mutate(
+    angle.one.score = 3-(First.Angle - mean(First.Angle))/sd(First.Angle),
+    angle.two.score = 3 - (Second.Angle - mean(Second.Angle))/sd(Second.Angle),
+    height.score = (Height - mean(Height))/sd(Height),
+    distance.score = 3 - (Distance - mean(Distance))/sd(Distance),
+    total.score = (angle.one.score + angle.two.score +height.score +distance.score)*DD,
+    reg.total = reg.model*3*DD)
+
+View(male.scores)
+
+male.ranking <- male.scores %>% 
+  select(Diver, Round.Score, total.score, reg.total) %>%
+  group_by(Diver) %>%
+  summarize(
+    actual.meet.total = sum(Round.Score),
+    my.meet.total = sum(total.score),
+    reg.model.total = sum(reg.total)) %>%
+  arrange(desc(actual.meet.total)) %>%
+  mutate(
+    actual.ranks = rank(-actual.meet.total),
+    my.meet.ranks = rank(-my.meet.total),
+    reg.model.ranks = rank(-reg.model.total)
+  )
+
+
+View(male.ranking)
+
+
+
